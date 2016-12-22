@@ -1,0 +1,9 @@
+D:\twitchat\twitchat\twitchat\bin\Debug\twitchat.exe.config
+D:\twitchat\twitchat\bin\Debug\twitchat.exe.config
+D:\twitchat\twitchat\bin\Debug\twitchat.exe
+D:\twitchat\twitchat\bin\Debug\twitchat.pdb
+D:\twitchat\twitchat\obj\Debug\twitchat.csprojResolveAssemblyReference.cache
+D:\twitchat\twitchat\obj\Debug\twitchat.Properties.Resources.resources
+D:\twitchat\twitchat\obj\Debug\twitchat.csproj.GenerateResource.Cache
+D:\twitchat\twitchat\obj\Debug\twitchat.exe
+D:\twitchat\twitchat\obj\Debug\twitchat.pdb
