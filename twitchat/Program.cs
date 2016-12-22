@@ -7,12 +7,18 @@ using System.Text;
 using System.Net;
 using System.Net.Sockets;
 using System.IO;
+using System.Runtime.Serialization;
 using System.Timers;
+using System.Web;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Net.Http;
 
 namespace chatrig
 {
     class chatrig
     {
+        
         private static byte[] data;
         private static string channel;
         private static NetworkStream stream;
@@ -29,10 +35,13 @@ namespace chatrig
 
         private static int longestYeahBoiEver;
 
+
         static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            
+
 
             quoteTimer.Elapsed += QuoteTimer_Elapsed;
 
@@ -174,16 +183,77 @@ namespace chatrig
 
                                     switch (command)
                                     {
+                                        case "help":
+                                        case "commands":
+                                            sendMessage("Use me in the following ways: !title, !discord, !uptime, !quote, !addquote");
+                                            break;
+
+                                        case "title":
+                                        case "game":
+                                            {
+                                                HttpWebRequest apiRequest = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/channels/" + channel);
+                                                apiRequest.Accept = "application/vnd.twitchtv.v2+json";
+                                                apiRequest.Headers.Add("Client-ID: jqqcl6f383moz9gzdd3aeg7lt4h0t0");
+
+
+                                                Stream apiStream;
+
+                                                apiStream = apiRequest.GetResponse().GetResponseStream();
+                                                StreamReader apiReader = new StreamReader(apiStream);
+                                                string jsonData = apiReader.ReadToEnd();
+                                                JObject parsed = JObject.Parse(jsonData);
+
+                                                apiReader.Close();
+                                                apiReader.Dispose();
+
+                                                apiStream.Close();
+                                                apiStream.Dispose();
+
+
+
+                                                sendMessage(channel + " is streaming " + parsed.Property("game").Value.ToString() + ": \"" + parsed.Property("status").Value.ToString() + "\"");
+                                            }
+                                            break;
+
                                         case "discord":
                                             sendMessage("Join my Discord server! You can only be cool if you do this first. https://discord.gg/hAF626j");
                                             break;
 
                                         case "uptime":
-                                            using (var webClient = new WebClient())
                                             {
-                                                string uptime = webClient.DownloadString("https://api.rtainc.co/twitch/uptime?channel=" + channel);
-                                                sendMessage(uptime);
+                                                HttpWebRequest apiRequest = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/streams/" + channel);
+                                                apiRequest.Accept = "application/vnd.twitchtv.v2+json";
+                                                apiRequest.Headers.Add("Client-ID: jqqcl6f383moz9gzdd3aeg7lt4h0t0");
+
+
+                                                Stream apiStream;
+
+                                                apiStream = apiRequest.GetResponse().GetResponseStream();
+                                                StreamReader apiReader = new StreamReader(apiStream);
+                                                string jsonData = apiReader.ReadToEnd();
+                                                JObject parsed = JObject.Parse(jsonData);
+                                                JObject streamParsed = JObject.Parse(parsed.Property("stream").Value.ToString());
+
+                                                apiReader.Close();
+                                                apiReader.Dispose();
+
+                                                apiStream.Close();
+                                                apiStream.Dispose();
+
+                                                if (parsed.Property("stream").Value.ToString() == "")
+                                                {
+                                                    sendMessage("Stream is not live. How are you seeing this?");
+                                                    break;
+                                                }
+                                                string time = streamParsed.Property("created_at").ToString();
+                                                DateTime liveTime = DateTime.Parse(streamParsed.Property("created_at").Value.ToString());
+                                             //   DateTime liveTime = DateTime.ParseExact(streamParsed.Property("created_at").ToString(), "", new System.Globalization.CultureInfo("en-US"), System.Globalization.DateTimeStyles.None); 
+                                                TimeSpan uptime = DateTime.Now.ToUniversalTime() - liveTime;
+
+                                                sendMessage(channel + " has been live for " + uptime.Hours + " hours and " + uptime.Minutes + " minutes.");
+
                                             }
+                                           
                                             break;
 
                                         case "quote":
@@ -215,7 +285,7 @@ namespace chatrig
                                             addingQuote = true;
                                             quoteTimer.Start();
 
-                                            sendMessage("Type !yes to add the quote. Two other people need to agree! Ends in one minute.");
+                                            sendMessage("Two other people need to agree by typing !yes to add the quote! Ends in one minute.");
 
                                             quoteAdders.Add(sendingUser[0]);
 
@@ -245,7 +315,7 @@ namespace chatrig
                                                     }
                                                 }
                                             }
-                                            
+
                                             else
                                             {
                                                 sendMessage("You already voted, dingus");
@@ -259,14 +329,23 @@ namespace chatrig
                                             sendMessage("Smartass.");
                                             break;
 
+                                        case "wowie":
+                                            sendMessage("wowie");
+                                            break;
+
+                                        case "staples":
+                                            sendMessage("That was easy.");
+                                            break;
+
                                         default:
                                             break;
                                     }
                                 }
 
-                                else if (message[2].ToLower().Contains("yeah boy")
-                                || message[2].ToLower().Contains("yeah boi")
-                                 || message[2].Contains("YeahBoi"))
+                                else if (message[2].ToLower().Contains("wowie")
+                                && message[2].ToLower().Contains("longest")
+                                && message[2].ToLower().Contains("ever")
+                                && (message[2].ToLower().Contains("yeah boi") || message[2].ToLower().Contains("yeah boy")))
                                 {
                                     sendMessage("yeah bo" + new string('i', longestYeahBoiEver));
                                     longestYeahBoiEver++;
@@ -275,27 +354,6 @@ namespace chatrig
                                         file.WriteLine(longestYeahBoiEver);
                                     }
                                 }
-
-                                else if (
-                                    (message[2].ToLower().Contains("wowie"))
-                                    && message[2].ToLower().Contains("welcome"))
-                                {
-                                    sendMessage("Thanks!");
-                                }
-
-                                else if ((message[2].ToLower().Contains("wowie"))
-                                    && (message[2].ToLower().Contains("hello")
-                                    || message[2].ToLower().Contains("hi")))
-                                {
-                                    int g = rnd.Next(greetings.Length);
-                                    sendMessage(greetings[g]);
-                                }
-
-                                else if (message[2].ToLower().Contains("wowie") && !message[2].ToLower().Contains("wowiebot"))
-                                {
-                                    sendMessage("wowie");
-                                }
-
                             }
                             // A user joined.
                             else if (preamble[1] == "JOIN")
