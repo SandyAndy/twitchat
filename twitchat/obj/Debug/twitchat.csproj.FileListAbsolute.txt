@@ -9,3 +9,6 @@ D:\twitchat\twitchat\obj\Debug\twitchat.exe
 D:\twitchat\twitchat\obj\Debug\twitchat.pdb
 D:\twitchat\twitchat\bin\Debug\Newtonsoft.Json.dll
 D:\twitchat\twitchat\bin\Debug\Newtonsoft.Json.xml
+D:\twitchat\twitchat\obj\Debug\twitchat.MainForm.resources
+D:\twitchat\twitchat\obj\Debug\twitchat.OAuthForm.resources
+D:\twitchat\twitchat\obj\Debug\twitchat.FunctionsForm.resources

@@ -9,10 +9,13 @@ using System.Net.Sockets;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Timers;
+using System.Text.RegularExpressions;
 using System.Web;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Net.Http;
+using System.Windows.Forms;
+using twitchat;
 
 namespace chatrig
 {
@@ -23,8 +26,6 @@ namespace chatrig
         private static string channel;
         private static NetworkStream stream;
 
-        private static string[] greetings = { "Hello! :) ", "HeyGuys", "VoHiYo" };
-
         private static List<string> quotes;
         private static Random rnd = new Random();
         private static int lastQuote = -1;
@@ -32,28 +33,96 @@ namespace chatrig
         private static List<string> quoteAdders = new List<string>();
         private static string quoteToAdd;
         private static System.Timers.Timer quoteTimer = new System.Timers.Timer(60000);
+        private static List<string> validCommands = new List<string>();
+        private static List<bool> displayCommandsInHelp = new List<bool>();
 
         private static int longestYeahBoiEver;
+        private static bool willDisconnect = false;
 
 
         static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            
+            Application.Run(new MainForm());
+        }
 
+        public static void disconnect()
+        {
+            willDisconnect = true;
+        }
 
+        private static void populateValidCommands(string nick)
+        {
+            var cfg = twitchat.Properties.Settings.Default;
+            validCommands.Add("help");
+            displayCommandsInHelp.Add(false);
+            validCommands.Add("commands");
+            displayCommandsInHelp.Add(false);
+            if (cfg.enableQuotes)
+            {
+                validCommands.Add("quote");
+                displayCommandsInHelp.Add(true);
+                validCommands.Add("addquote");
+                displayCommandsInHelp.Add(true);
+                validCommands.Add("yes");
+                displayCommandsInHelp.Add(false);
+            }
+            if (cfg.enableTitle)
+            {
+                validCommands.Add("title");
+                displayCommandsInHelp.Add(true);
+                validCommands.Add("game");
+                displayCommandsInHelp.Add(false);
+            }
+            if (cfg.enableUptime)
+            {
+                validCommands.Add("uptime");
+                displayCommandsInHelp.Add(true);
+            }
+            if (cfg.enableDiscord)
+            {
+                validCommands.Add("discord");
+                displayCommandsInHelp.Add(true);
+            }
+            if (nick == "wowiebot")
+            {
+                validCommands.Add("wowie");
+                displayCommandsInHelp.Add(false);
+            }
+            if (channel == "scatterclegge" || channel.ToLower() == "lumardy")
+            {
+                validCommands.Add("wr");
+                displayCommandsInHelp.Add(true);
+                validCommands.Add("no");
+                displayCommandsInHelp.Add(false);
+                validCommands.Add("heck");
+                displayCommandsInHelp.Add(false);
+            }
+        }
+
+        public static void runBot(string pChannel, string nick, string oauth)
+        { 
             quoteTimer.Elapsed += QuoteTimer_Elapsed;
 
-            longestYeahBoiEver = int.Parse(File.ReadAllLines("yeahboi.txt")[0]);
+            longestYeahBoiEver = twitchat.Properties.Settings.Default.longestYeahBoiEver;
 
-            var arrQuotes = File.ReadAllLines("quotes.txt");
+            //string[] arrQuotes = File.ReadAllLines("quotes.txt");
+            //twitchat.Properties.Settings.Default.quotes = new System.Collections.Specialized.StringCollection();
+            //twitchat.Properties.Settings.Default.quotes.AddRange(arrQuotes);
+            //twitchat.Properties.Settings.Default.Save();
+            //quotes = new List<string>(arrQuotes);
+            channel = pChannel;
+
+            populateValidCommands(nick);
+
+            string[] arrQuotes = new string[twitchat.Properties.Settings.Default.quotes.Count];
+            twitchat.Properties.Settings.Default.quotes.CopyTo(arrQuotes, 0);
             quotes = new List<string>(arrQuotes);
 
             Int32 port = 6667;
             TcpClient client = new TcpClient("irc.twitch.tv", port);
             // Enter in channel (the username of the stream chat you wish to connect to) without the #
-            channel = "scatterclegge";
 
             // Get a client stream for reading and writing.
             //  Stream stream = client.GetStream();
@@ -62,7 +131,9 @@ namespace chatrig
 
             // Send the message to the connected TcpServer. 
 
-            string loginstring = "PASS oauth:5bdocznijbholgvt3o9u6t5ui6okjs\r\nNICK wowiebot\r\n";
+            // string oauth = "5bdocznijbholgvt3o9u6t5ui6okjs";
+
+            string loginstring = "PASS oauth:" + oauth + "\r\nNICK "+ nick +"\r\n";
             Byte[] login = System.Text.Encoding.ASCII.GetBytes(loginstring);
             stream.Write(login, 0, login.Length);
             Console.WriteLine("Sent login.\r\n");
@@ -100,7 +171,19 @@ namespace chatrig
             Console.WriteLine("TWITCH CHAT HAS BEGUN.\r\n\r\nr.");
             Console.WriteLine("\r\nBE CAREFUL.");
 
-            while (true)
+            string helpCommands = "Use me in the following ways: ";
+            for (int i = 0; i < validCommands.Count; i++)
+            {
+                if (displayCommandsInHelp[i])
+                {
+                    helpCommands += twitchat.Properties.Settings.Default.prefix + validCommands[i] + ", ";
+                }
+            }
+            helpCommands = helpCommands.Substring(0, helpCommands.Length - 2);
+
+            willDisconnect = false;
+
+            while (!willDisconnect)
             {
                 
                 // build a buffer to read the incoming TCP stream to, convert to a string
@@ -146,9 +229,10 @@ namespace chatrig
                     // If it's not a ping, it's probably something we care about.  Try to parse it for a message.
                     default:
                         try
-                        { 
+                        {
                             string messageParser = myCompleteMessage.ToString();
-                            string[] message = messageParser.Split(':');
+                            char[] spl = {':'};
+                            string[] message = messageParser.Split(spl, 3);
                             string[] preamble = message[1].Split(' ');
                             string tochat;
 
@@ -157,23 +241,23 @@ namespace chatrig
                             {
                                 string[] sendingUser = preamble[0].Split('!');
                                 tochat = sendingUser[0] + ": " + message[2];
-                            
+
                                 // sometimes the carriage returns get lost (??)
                                 if (tochat.Contains("\n") == false)
                                 {
                                     tochat = tochat + "\n";
                                 }
-                                
+
                                 // Ignore some well known bots
                                 if (sendingUser[0] != "moobot" && sendingUser[0] != "whale_bot")
                                 {
-                                  //  SendKeys.SendWait(tochat.TrimEnd('\n'));
+                                    //  SendKeys.SendWait(tochat.TrimEnd('\n'));
                                 }
 
 
 
 
-                                if (message[2][0] == '!')
+                                if (message[2].StartsWith(twitchat.Properties.Settings.Default.prefix))
                                 {
                                     string command;
                                     if (message[2].Contains(" "))
@@ -181,168 +265,185 @@ namespace chatrig
                                     else
                                         command = message[2].Substring(1, message[2].Length - 3);
 
-                                    switch (command)
+                                    command = command.ToLower();
+
+                                    if (validCommands.Contains(command))
                                     {
-                                        case "help":
-                                        case "commands":
-                                            sendMessage("Use me in the following ways: !title, !discord, !uptime, !quote, !addquote");
-                                            break;
 
-                                        case "title":
-                                        case "game":
-                                            {
-                                                HttpWebRequest apiRequest = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/channels/" + channel);
-                                                apiRequest.Accept = "application/vnd.twitchtv.v2+json";
-                                                apiRequest.Headers.Add("Client-ID: jqqcl6f383moz9gzdd3aeg7lt4h0t0");
+                                        switch (command)
+                                        {
+                                            case "help":
+                                            case "commands":
+                                                
+                                                sendMessage(helpCommands);
+                                                break;
 
-
-                                                Stream apiStream;
-
-                                                apiStream = apiRequest.GetResponse().GetResponseStream();
-                                                StreamReader apiReader = new StreamReader(apiStream);
-                                                string jsonData = apiReader.ReadToEnd();
-                                                JObject parsed = JObject.Parse(jsonData);
-
-                                                apiReader.Close();
-                                                apiReader.Dispose();
-
-                                                apiStream.Close();
-                                                apiStream.Dispose();
-
-
-
-                                                sendMessage(channel + " is streaming " + parsed.Property("game").Value.ToString() + ": \"" + parsed.Property("status").Value.ToString() + "\"");
-                                            }
-                                            break;
-
-                                        case "discord":
-                                            sendMessage("Join my Discord server! You can only be cool if you do this first. https://discord.gg/hAF626j");
-                                            break;
-
-                                        case "uptime":
-                                            {
-                                                HttpWebRequest apiRequest = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/streams/" + channel);
-                                                apiRequest.Accept = "application/vnd.twitchtv.v2+json";
-                                                apiRequest.Headers.Add("Client-ID: jqqcl6f383moz9gzdd3aeg7lt4h0t0");
-
-
-                                                Stream apiStream;
-
-                                                apiStream = apiRequest.GetResponse().GetResponseStream();
-                                                StreamReader apiReader = new StreamReader(apiStream);
-                                                string jsonData = apiReader.ReadToEnd();
-                                                JObject parsed = JObject.Parse(jsonData);
-                                                JObject streamParsed = JObject.Parse(parsed.Property("stream").Value.ToString());
-
-                                                apiReader.Close();
-                                                apiReader.Dispose();
-
-                                                apiStream.Close();
-                                                apiStream.Dispose();
-
-                                                if (parsed.Property("stream").Value.ToString() == "")
+                                            case "title":
+                                            case "game":
                                                 {
-                                                    sendMessage("Stream is not live. How are you seeing this?");
+                                                    HttpWebRequest apiRequest = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/channels/" + channel);
+                                                    apiRequest.Accept = "application/vnd.twitchtv.v2+json";
+                                                    apiRequest.Headers.Add("Client-ID: jqqcl6f383moz9gzdd3aeg7lt4h0t0");
+
+
+                                                    Stream apiStream;
+
+                                                    apiStream = apiRequest.GetResponse().GetResponseStream();
+                                                    StreamReader apiReader = new StreamReader(apiStream);
+                                                    string jsonData = apiReader.ReadToEnd();
+                                                    JObject parsed = JObject.Parse(jsonData);
+
+                                                    apiReader.Close();
+                                                    apiReader.Dispose();
+
+                                                    apiStream.Close();
+                                                    apiStream.Dispose();
+
+
+
+                                                    sendMessage(channel + " is streaming " + parsed.Property("game").Value.ToString() + ": \"" + parsed.Property("status").Value.ToString() + "\"");
+                                                }
+                                                break;
+
+                                            case "discord":
+                                                sendMessage("Join my Discord server! You can only be cool if you do this first. https://discord.gg/hAF626j");
+                                                break;
+
+                                            case "uptime":
+                                                {
+                                                    HttpWebRequest apiRequest = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/streams/" + channel);
+                                                    apiRequest.Accept = "application/vnd.twitchtv.v2+json";
+                                                    apiRequest.Headers.Add("Client-ID: jqqcl6f383moz9gzdd3aeg7lt4h0t0");
+
+
+                                                    Stream apiStream;
+
+                                                    apiStream = apiRequest.GetResponse().GetResponseStream();
+                                                    StreamReader apiReader = new StreamReader(apiStream);
+                                                    string jsonData = apiReader.ReadToEnd();
+                                                    JObject parsed = JObject.Parse(jsonData);
+                                                    JObject streamParsed = JObject.Parse(parsed.Property("stream").Value.ToString());
+
+                                                    apiReader.Close();
+                                                    apiReader.Dispose();
+
+                                                    apiStream.Close();
+                                                    apiStream.Dispose();
+
+                                                    if (parsed.Property("stream").Value.ToString() == "")
+                                                    {
+                                                        sendMessage("Stream is not live. How are you seeing this?");
+                                                        break;
+                                                    }
+                                                    string time = streamParsed.Property("created_at").ToString();
+                                                    DateTime liveTime = DateTime.Parse(streamParsed.Property("created_at").Value.ToString());
+                                                    //   DateTime liveTime = DateTime.ParseExact(streamParsed.Property("created_at").ToString(), "", new System.Globalization.CultureInfo("en-US"), System.Globalization.DateTimeStyles.None); 
+                                                    TimeSpan uptime = DateTime.Now.ToUniversalTime() - liveTime;
+
+                                                    sendMessage(channel + " has been live for " + uptime.Hours + " hours and " + uptime.Minutes + " minutes.");
+
+                                                }
+
+                                                break;
+
+                                            case "quote":
+                                                if (quotes.Count == 0)
+                                                {
+                                                    sendMessage("No quotes. I guess scatterclegge just isn't funny or quotable.");
                                                     break;
                                                 }
-                                                string time = streamParsed.Property("created_at").ToString();
-                                                DateTime liveTime = DateTime.Parse(streamParsed.Property("created_at").Value.ToString());
-                                             //   DateTime liveTime = DateTime.ParseExact(streamParsed.Property("created_at").ToString(), "", new System.Globalization.CultureInfo("en-US"), System.Globalization.DateTimeStyles.None); 
-                                                TimeSpan uptime = DateTime.Now.ToUniversalTime() - liveTime;
-
-                                                sendMessage(channel + " has been live for " + uptime.Hours + " hours and " + uptime.Minutes + " minutes.");
-
-                                            }
-                                           
-                                            break;
-
-                                        case "quote":
-                                            if (quotes.Count == 0)
-                                            {
-                                                sendMessage("No quotes. I guess scatterclegge just isn't funny or quotable.");
-                                                break;
-                                            }
-                                            int q;
-                                            do
-                                            {
-                                                q = rnd.Next(quotes.Count);
-                                            } while (q == lastQuote && quotes.Count > 1);
-                                            sendMessage(quotes[q]);
-                                            lastQuote = q;
-                                            break;
-
-                                        case "addquote":
-
-                                            if (addingQuote)
-                                            {
-                                                sendMessage("Finish adding the current quote first.");
-                                                break;
-                                            }
-
-
-                                            quoteToAdd = message[2].Substring(message[2].IndexOf(" ") + 1);
-                                            quoteToAdd = quoteToAdd.Remove(quoteToAdd.Length - 2);
-                                            addingQuote = true;
-                                            quoteTimer.Start();
-
-                                            sendMessage("Two other people need to agree by typing !yes to add the quote! Ends in one minute.");
-
-                                            quoteAdders.Add(sendingUser[0]);
-
-                                            break;
-
-                                        case "yes":
-                                            if (!addingQuote)
-                                                break;
-
-                                            if (!quoteAdders.Contains(sendingUser[0]))
-                                            {
-                                                quoteAdders.Add(sendingUser[0]);
-                                                if (quoteAdders.Count == 2)
+                                                int q;
+                                                do
                                                 {
-                                                    sendMessage("One more!");
+                                                    q = rnd.Next(quotes.Count);
+                                                } while (q == lastQuote && quotes.Count > 1);
+                                                sendMessage(quotes[q]);
+                                                lastQuote = q;
+                                                break;
+
+                                            case "addquote":
+
+                                                if (addingQuote)
+                                                {
+                                                    sendMessage("Finish adding the current quote first.");
+                                                    break;
                                                 }
-                                                else if (quoteAdders.Count == 3)
+
+
+                                                quoteToAdd = message[2].Substring(message[2].IndexOf(" ") + 1);
+                                                quoteToAdd = quoteToAdd.Remove(quoteToAdd.Length - 2);
+                                                addingQuote = true;
+                                                quoteTimer.Start();
+
+                                                sendMessage("Two other people need to agree by typing !yes to add the quote! Ends in one minute.");
+
+                                                quoteAdders.Add(sendingUser[0]);
+
+                                                break;
+
+                                            case "yes":
+                                                if (!addingQuote)
+                                                    break;
+
+                                                if (!quoteAdders.Contains(sendingUser[0]))
                                                 {
-                                                    using (StreamWriter file = new StreamWriter("quotes.txt", true))
+                                                    quoteAdders.Add(sendingUser[0]);
+                                                    if (quoteAdders.Count == 2)
                                                     {
-                                                        file.WriteLine(quoteToAdd);
-                                                        quoteAdders.Clear();
-                                                        quotes.Add(quoteToAdd);
-                                                        addingQuote = false;
-                                                        quoteTimer.Stop();
-                                                        sendMessage("Quote added.");
+                                                        sendMessage("One more!");
+                                                    }
+                                                    else if (quoteAdders.Count == 3)
+                                                    {
+                                                        using (StreamWriter file = new StreamWriter("quotes.txt", true))
+                                                        {
+                                                            file.WriteLine(quoteToAdd);
+                                                            quoteAdders.Clear();
+                                                            quotes.Add(quoteToAdd);
+                                                            addingQuote = false;
+                                                            quoteTimer.Stop();
+                                                            sendMessage("Quote added.");
+                                                        }
                                                     }
                                                 }
-                                            }
 
-                                            else
-                                            {
-                                                sendMessage("You already voted, dingus");
-                                            }
+                                                else if (quoteAdders[0] == sendingUser[0])
+                                                {
+                                                    sendMessage("Yeah, you added the quote. I got it.");
+                                                }
 
-                                            break;
+                                                else
+                                                {
+                                                    sendMessage("You already voted, dingus");
+                                                }
 
-                                        case "no":
-                                            if (!addingQuote)
                                                 break;
-                                            sendMessage("Smartass.");
-                                            break;
 
-                                        case "wowie":
-                                            sendMessage("wowie");
-                                            break;
+                                            case "no":
+                                                if (!addingQuote)
+                                                    break;
+                                                sendMessage("Smartass.");
+                                                break;
 
-                                        case "staples":
-                                            sendMessage("That was easy.");
-                                            break;
+                                            case "wowie":
+                                                sendMessage("wowie");
+                                                break;
 
-                                        default:
-                                            break;
+                                            case "wr":
+                                                sendMessage("https://www.youtube.com/watch?v=okR63Hh6ONU");
+                                                break;
+
+                                            case "heck":
+                                                sendMessage("https://twitter.com/billyraycyrus/status/335910871974965248");
+                                                break;
+
+                                            default:
+                                                break;
+                                        }
                                     }
                                 }
 
-                                else if (message[2].ToLower().Contains("wowie")
+                                else if (twitchat.Properties.Settings.Default.enableYeahBoi
+                                && message[2].ToLower().Contains("wowie")
                                 && message[2].ToLower().Contains("longest")
                                 && message[2].ToLower().Contains("ever")
                                 && (message[2].ToLower().Contains("yeah boi") || message[2].ToLower().Contains("yeah boy")))
@@ -354,6 +455,30 @@ namespace chatrig
                                         file.WriteLine(longestYeahBoiEver);
                                     }
                                 }
+
+                                if (twitchat.Properties.Settings.Default.enableLinkTitles)
+                                {
+                                    Regex regx = new Regex(@"((http|ftp|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&amp;:/~\+#]*[\w\-\@?^=%&amp;/~\+#])?)", RegexOptions.IgnoreCase);
+                                    MatchCollection mactches = regx.Matches(message[2]);
+                                    foreach (Match match in mactches)
+                                    {
+                                        WebClient x = new WebClient();
+                                        string source;
+                                        //WebRequest req = WebRequest.Create(match.Value);
+                                        try
+                                        {
+                                            source = x.DownloadString(match.Value);
+                                        }
+                                        catch
+                                        {
+                                            continue;
+                                        }
+                                        string title = Regex.Match(source, @"\<title\b[^>]*\>\s*(?<Title>[\s\S]*?)\</title\>", RegexOptions.IgnoreCase).Groups["Title"].Value;
+                                        title = Regex.Replace(title, @"[^\u0000-\u007F]+", string.Empty);
+                                        sendMessage(sendingUser[0] + " posted: " + title);
+                                    }
+                                }
+                                
                             }
                             // A user joined.
                             else if (preamble[1] == "JOIN")
@@ -378,11 +503,8 @@ namespace chatrig
                 }
             }
 
-            // Close everything.  Should never happen because you gotta close the window.
             stream.Close();
             client.Close();
-            Console.WriteLine("\n Press Enter to continue...");
-            Console.Read();
         }
 
         private static void QuoteTimer_Elapsed(object sender, ElapsedEventArgs e)
